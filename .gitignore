@@ -29,6 +29,7 @@ Thumbs.db
 .env
 .env.local
 *.local
+gcs-key.json
 
 # ── Docs extras (knowledge base, case studies, models — large reference files) ─
 docs/extra/

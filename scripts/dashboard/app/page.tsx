@@ -359,6 +359,7 @@ uvicorn main:app --port 8001 --reload`}
                       loanSchedule={computed.loanSchedule}
                       annualOpex={computed.annualOpex}
                       selectedPercentile={display.selectedPercentile}
+                      minDscr={computed.minDscr}
                     />
                   ) : (
                     <div className="h-56 animate-pulse bg-[var(--color-bg)] rounded" />

@@ -205,21 +205,23 @@ analysis (revenue distribution, monthly seasonality) do they click to expand.
 ║          ║                                                                   ║
 ║  (as-is) ║───────────────────────────────────────────────────────────────── ║
 ║          ║                                                                   ║
-║  Config  ║  HERO CHART — DSCR band + heatmap background                    ║
+║  Config  ║  HERO CHART — CFADS band + vertical-gradient heatmap             ║
 ║  ──────  ║                                                                   ║
 ║  Asset   ║  ┌──────────────────────────────────────────────────────────┐    ║
-║  Loan    ║  │░░░░░░▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████████│    ║
-║  OpEx    ║  │░░░░░░▒▒▒╱‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾╲ CFADS P90 █████████│    ║
-║  Cov.    ║  │░░░░╱══════ CFADS P50 median ═══════╲█████████████████│    ║
-║  Display ║  │░╱══════════════════════════════════════╲ CFADS P10 ██│    ║
-║          ║  │░░░░░░▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████████│    ║
+║  Loan    ║  │P90 ██████████████████████████████████████████████████████│    ║
+║  OpEx    ║  │P75 ██████████████████████████████████████████████████████│    ║
+║  Cov.    ║  │P50 ▓▓▓▓▓▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓████████████████████████████│    ║
+║  Ledger  ║  │P25 ▒▒▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓████████████████████████████│    ║
+║          ║  │P10 ░░░░░░░░░░░▒▒▒▒▒▒▒▒▓▓▓████████████████████████████│    ║
+║          ║  │          ╱‾╲   ╱‾╲   ╱‾╲    ...   ╱‾╲   CFADS band    │    ║
+║          ║  │      P50 ─────────────────── ───────────────            │    ║
+║          ║  │          ╲_╱   ╲_╱   ╲_╱    ...   ╲_╱                  │    ║
 ║          ║  │──●─────●─────●─────●─────●────── Debt Service ($M) ──│    ║
-║          ║  │░amber▒▒▒▒▒▒▓▓▓light-green▓▓▓▓▓▓▓█████ deep-green ██│    ║
-║          ║  │░░░░░░▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████████│    ║
 ║          ║  │  Yr1   Yr3   Yr5  ...  Yr12  ...  Yr17   Yr18       │    ║
 ║          ║  └──────────────────────────────────────────────────────────┘    ║
 ║          ║  Foreground: CFADS band ($M) + DS line (gap = headroom)         ║
-║          ║  Background: DSCR heatmap — hover for covenant detail per year  ║
+║          ║  Background: 5 vertical bands (P10→P90), continuous gradient    ║
+║          ║  Hover background for per-percentile LTM DSCR covenant detail   ║
 ║          ║                                                                   ║
 ║          ║───────────────────────────────────────────────────────────────── ║
 ║          ║                                                                   ║
@@ -260,13 +262,21 @@ analysis (revenue distribution, monthly seasonality) do they click to expand.
 
 ---
 
-### 2.3 Hero chart — Quarterly Cashflow band with LTM DSCR heatmap overlay
+### 2.3 Hero chart — Dual-view: Project Lifecycle + Forward 12-Month
 
-This is the single most important visualization. It replaces:
-- DscrChart (Zone B)
-- CfadsDsChart (Zone D)
-- CovenantScorecard's covenant matrix
-- KPI "where is the worst year" logic (now visible at a glance)
+This is the single most important visualization. It has two modes toggled by buttons
+at the top of the chart:
+
+| Toggle | View |
+|--------|------|
+| **Project Lifecycle** | 72-quarter (or 18-year) view across full loan tenor — shows DSCR evolution with amortization |
+| **Forward 12M** | 12-month forward-looking view from the actual forecast start month — shows monthly seasonality |
+
+---
+
+#### 2.3a Lifecycle view (default)
+
+Replaces: DscrChart, CfadsDsChart, CovenantScorecard
 
 **Key design decisions:**
 
@@ -274,13 +284,55 @@ This is the single most important visualization. It replaces:
    The seasonal pattern (solar: summer peak, winter trough) is visible as undulation
    in the CFADS band. The gap between the band and the DS line is the headroom.
 
-2. **Background: Per-quarter LTM DSCR heatmap** — each quarter's vertical column is
-   tinted by the LTM (trailing 12-month) DSCR covenant status. Warm (amber/red) for
-   risky quarters, cool (green) for safe quarters.
+2. **Background: Per-quarter LTM DSCR heatmap with vertical percentile bands** —
+   each quarter's column is split into 5 horizontal bands (bottom → top: P10, P25,
+   P50, P75, P90). Each band is colored by a continuous gradient based on that
+   percentile's LTM DSCR value: deep red (severe breach) → orange → amber (near
+   threshold) → light green → deep green (very safe). The vertical gradient lets
+   you see both *where* risk is in the timeline (horizontal) and *how spread out*
+   the risk is across scenarios (vertical). A column that is uniformly green = low
+   uncertainty, all scenarios safe. A column with red at bottom and green at top =
+   high uncertainty, P10 breaches but P90 is comfortable.
 
 3. **DSCR is background context, not the primary signal** — it's accessible via hover
    (covenant detail tooltip per quarter), but the visual foreground is cashflow in
    familiar dollar terms.
+
+---
+
+#### 2.3b Forward 12-Month view
+
+Shows the same data as the collapsible "Monthly Forecast Distribution" but in a
+richer, integrated format:
+
+**Foreground: Monthly CFADS band + Monthly Debt Service line**
+- X-axis: 12 months in forecast order starting from `forecast_start_month`
+  (e.g. Feb 2026 → Jan 2027, not always Jan → Dec)
+- Y-axis in $M, same scale as lifecycle view
+- Same spline-smoothed P10–P90 band and P50 center line
+
+**Background: 4 quarterly heatmap blocks (each spanning 3 months)**
+- Quarter blocks are defined by forecast position, not calendar:
+  Q1 = months 1–3, Q2 = 4–6, Q3 = 7–8, Q4 = 9–11 of the forward window
+- Each block has 5 vertical bands (P10 bottom → P90 top)
+- **Colored by quarterly DSCR (not LTM)** — this intentionally shows within-year
+  seasonal risk: Q1/Q4 (winter for solar) appear red/orange; Q2/Q3 (summer) appear green
+- Hover on a block shows: Q label (e.g. "Q1 (Feb–Apr)"), DSCR per percentile with ✓/✗
+
+**Why quarterly DSCR here instead of LTM:**
+- LTM over 12 months = one number (same for all 4 quarters) → no within-year signal
+- Quarterly DSCR exposes the seasonal risk story: winter quarters are structurally tight,
+  summer quarters comfortable — exactly what users want to see in the forward view
+- This is intentionally more conservative than LTM; it's a stress view, not a covenant test
+
+**Month alignment accuracy:**
+- `forecast_start_month` is extracted from `min(year_month)` in `data_loader.py`
+  before the `year_month` column is dropped, so the actual forecast start is preserved
+- Example: forecast Feb 2026 → Jan 2027 → `forecast_start_month = 2`
+- X-axis: `["Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan"]`
+- If no monthly data, "Forward 12M" button is disabled
+
+---
 
 #### Quarterly granularity — why it matters
 
@@ -294,7 +346,7 @@ actual seasonal shape of revenue:
 | Quarterly (now) | Undulating band — summer peaks, winter troughs visible |
 | Gen 2 future | Year-over-year decline from degradation visible across 72 points |
 
-#### Data pipeline
+#### Data pipeline (lifecycle mode)
 
 ```
 monthly_paths (12 months × N paths)
@@ -303,15 +355,32 @@ monthly_paths (12 months × N paths)
   → computeQuarterlyData()           [lib/finance.ts]
       72 QuarterlyPoint objects (18 years × 4 quarters)
       each: quarterly CFADS, quarterly DS, LTM DSCR
-  → HeroChart.tsx (quarterly mode)
+  → HeroChart.tsx (lifecycle mode)
       72-point x-axis, seasonal CFADS band, step-down DS line
       per-quarter heatmap background, hover for LTM DSCR detail
 ```
 
-Fallback: if monthly data is absent (e.g. site has no monthly table), the chart
-falls back to the annual mode (18-point x-axis, flat CFADS, annual DS).
+#### Data pipeline (forward 12M mode)
 
-#### LTM DSCR formula
+```
+monthly_paths (12 months × N paths)
+  → computeMonthlyPercentiles()      [lib/stats.ts]
+      PercentileMap per calendar month (12 entries, index 0 = Jan)
+  → data_loader.py extracts forecast_start_month from min(year_month)
+      e.g. "2026-02" → forecast_start_month = 2
+  → computeMonthlyViewData()         [lib/finance.ts]
+      12 MonthlyViewPoint objects (forecast order from startMonth)
+      4 ForwardQuarterBlock objects (quarterly DSCR per percentile)
+  → HeroChart.tsx (forward12m mode)
+      12-point x-axis (month names in forecast order)
+      monthly CFADS band + monthly DS line (Y1)
+      4 quarterly heatmap blocks, 5 vertical bands each
+```
+
+Fallback: if monthly data is absent, the chart falls back to the annual lifecycle mode
+(18-point x-axis, flat CFADS, annual DS). "Forward 12M" button is disabled.
+
+#### LTM DSCR formula (lifecycle mode)
 
 **LTM DSCR tested at quarter Q of year Y:**
 ```
@@ -323,56 +392,88 @@ LTM_DSCR[Y,Q]    = LTM_CFADS[Y,Q] / annual_DS[Y]
 **Gen 1 note:** Revenue repeats the same seasonal pattern each year (A1: revenue
 constant). So all 4 quarters of the same year have the same LTM DSCR — only
 varying year-to-year as DS changes with amortization. The heatmap background
-therefore shows year-level coloring with 4 identical cells per year.
+therefore shows year-level coloring with 4 identical columns per year, but each
+column has 5 distinct vertical bands (P10 at bottom, P90 at top) with different
+colors reflecting the risk spread across scenarios.
 
-**Gen 2 readiness:** When degradation and escalation are added, each year's
-revenue differs. LTM tested at Q3-Y5 will span Q4-Y4, Q1-Y5, Q2-Y5, Q3-Y5 —
-a mix of two different years' generation levels. The framework handles this
-seamlessly: `computeQuarterlyPercentiles()` will receive per-year monthly data,
-and `computeQuarterlyData()` will compute true trailing sums.
+**Full worked example:** See `From_Forecast_to_Cashflow_and_DSCR.md` §5.3a for
+a complete walkthrough with numerical examples covering quarterly aggregation,
+the LTM DSCR calculation, why naive quarterly DSCR is misleading, the percentile
+addition trap, and Gen 1 vs Gen 2 behavior.
 
 #### What the user sees
 
 ```
   $M
        ┌────────────────────────────────────────────────────────────┐
-       │░░░░░░░▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████│
-  35M  │ CFADS P90 ╱‾╲   ╱‾╲   ╱‾╲   ...   ╱‾╲   ╱‾╲   ╱‾╲     │
-       │          ╱   ╲ ╱   ╲ ╱   ╲         ╱   ╲ ╱   ╲ ╱   ╲  │
-  30M  │       P50 ─────────────────── ─────────────────── ───── │
-       │          ╲   ╱ ╲   ╱ ╲   ╱         ╲   ╱ ╲   ╱ ╲   ╱  │
-  25M  │ CFADS P10 ╲─╱   ╲─╱   ╲─╱   ...   ╲─╱   ╲─╱   ╲─╱     │
-       │░░░░░░░▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████│
-  10M  │─────────────────│────────────────────────────────────── │
-       │ Debt Service (step-down every year with amortization)    │
-   5M  │░amber░▒▒▒▒▒▒▒▒▓▓▓light-green▓▓▓▓▓▓▓▓▓█████ deep-green█│
-   0M  │░░░░░░░▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓████████████████████│
+  P90  │██████████████████████████████████████████████████████████████│ ← deep green
+  P75  │██████████████████████████████████████████████████████████████│ ← green
+  P50  │▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓██████████████████████████│ ← amber→green
+  P25  │▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓██████████████████████████│ ← orange→green
+  P10  │░░░░░░░░░░░▒▒▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓██████████████████████████│ ← red→green
+       │                                                              │
+  35M  │ CFADS P90 ╱‾╲   ╱‾╲   ╱‾╲   ...   ╱‾╲   ╱‾╲   ╱‾╲       │
+       │          ╱   ╲ ╱   ╲ ╱   ╲         ╱   ╲ ╱   ╲ ╱   ╲    │
+  30M  │       P50 ─────────────────── ─────────────────── ─────   │
+       │          ╲   ╱ ╲   ╱ ╲   ╱         ╲   ╱ ╲   ╱ ╲   ╱    │
+  25M  │ CFADS P10 ╲─╱   ╲─╱   ╲─╱   ...   ╲─╱   ╲─╱   ╲─╱       │
+       │                                                              │
+  10M  │──────────────────│─────────────────────────────────────     │
+       │ Debt Service (step-down every year with amortization)        │
        └──┬────┬────┬──...──┬────┬────┬────┬──────────────────────┘
           Y1   Y2   Y3     Y8   Y9  Y10  Y11  ...  Y18
+
   Seasonal peaks = Q3 (summer), troughs = Q1 (winter)
-  Background: 72 columns, colored per LTM DSCR at that test date
+  Background: 72 columns × 5 vertical bands (P10 bottom → P90 top)
+  Each band colored by continuous gradient: red → orange → amber → green
+  Early years: bottom bands red/orange (P10 breach), top bands green (P90 safe)
+  Later years: uniformly green (even P10 is safe after amortization)
 ```
 
 #### Interactions
 
 | Action | Result |
 |--------|--------|
+| **Lifecycle mode** | |
 | Hover on CFADS band | Tooltip: "Q2-Y3 — CFADS P50: $X.XXM · Range: $X.XXM–$X.XXM" |
 | Hover on DS line | Tooltip: "Q2-Y3 — Quarterly DS: $X.XXM · Annual DS: $X.XXM" |
-| Hover on background | Covenant tooltip: "Q2-Y3 — LTM DSCR P10/P50/P90, covenant pass/fail" |
-| Change loan config | DS line re-steps, heatmap recolors — CFADS band unchanged |
+| Hover on background (lifecycle) | LTM DSCR tooltip: "Q2-Y3 — LTM DSCR P10/P25/P50/P75/P90, each with ✓/✗, overall pass/fail" |
+| **Forward 12M mode** | |
+| Hover on CFADS band | Tooltip: "Mar (Forward 12M) — CFADS P50: $X.XXM · Range: $X.XXM–$X.XXM" |
+| Hover on DS line | Tooltip: "Mar — Monthly DS: $X.XXM · Annual DS (Y1): $X.XXM" |
+| Hover on heatmap block | Quarterly DSCR tooltip: "Q1 (Feb–Apr) — P10/P25/P50/P75/P90 with ✓/✗, pass/fail" |
+| **Both modes** | |
+| Click "Project Lifecycle" toggle | Switch to lifecycle view |
+| Click "Forward 12M" toggle | Switch to monthly view (disabled if no monthly data) |
+| Change loan config | DS line updates, heatmap recolors |
 | Change OpEx | CFADS band shifts, heatmap recolors |
-| Change covenant min | Heatmap recolors, more/fewer quarters go amber/red |
+| Change covenant min | Heatmap recolors, more/fewer bands go red/amber |
 
 #### Plotly implementation
 
 - **72-point x-axis:** integer index 0–71 with custom tickvals/ticktext showing
-  only year labels (Y1, Y2...) at Q1 positions (indices 0, 4, 8, ..., 68)
-- **Background rects:** `layout.shapes` with `xref: 'x'`, one rect per index
-- **DS line:** `shape: 'hv'` (horizontal-then-vertical step) so the step-down at
-  each year boundary is crisp rather than a sloped line
+  only year labels (Y1, Y2...) at Q1 positions (indices 0, 4, 8, ..., 68).
+  Range clamped to `[-0.5, 71.5]` to remove gaps at edges.
+- **Background rects:** `layout.shapes` with `xref: 'x'`, `yref: 'paper'`.
+  **5 shapes per quarter** (72 × 5 = 360 shapes total), stacked vertically:
+  - `y0: 0.0, y1: 0.2` → colored by P10 LTM DSCR
+  - `y0: 0.2, y1: 0.4` → colored by P25 LTM DSCR
+  - `y0: 0.4, y1: 0.6` → colored by P50 LTM DSCR
+  - `y0: 0.6, y1: 0.8` → colored by P75 LTM DSCR
+  - `y0: 0.8, y1: 1.0` → colored by P90 LTM DSCR
+  All with `layer: 'below'` so foreground traces paint on top.
+- **Continuous color gradient:** 5-stop linear interpolation from deep red
+  (DSCR = minDscr − 0.30) through orange, amber, light green, to deep green
+  (DSCR = minDscr + 0.75). Both light and dark theme have separate color stops.
+  Opacity also scales continuously: 0.22 (breach, more visible) → 0.05 (very safe,
+  subtle). Implemented via `lerpStops()` and `dscrToT()` in `HeroChart.tsx`.
+- **CFADS traces:** P10/P90 outer band, P25/P75 inner band, P50 center line —
+  all with `shape: 'spline', smoothing: 1.0` for smooth curves.
+- **DS line:** plain linear (no step shape) for clean visual.
+- **Invisible hover markers:** scatter trace at y ≈ 12% of P90 CFADS, transparent
+  markers with full LTM DSCR tooltip (all 5 percentiles with per-percentile ✓/✗).
 - **Fallback:** chart auto-detects `quarterlyData.length === 0` and switches to
-  annual mode
+  annual mode (18-point x-axis, same 5-band vertical gradient per year).
 
 ---
 
@@ -455,7 +556,8 @@ Implementation: `lib/export.ts` → `generateFullReportCsv()`.
 
 #### DSCR cell coloring
 
-Same palette as the hero chart heatmap background:
+The ledger table uses a 4-bucket discrete palette via CSS variables (suitable for
+small table cells where fine gradients are hard to read):
 
 | DSCR vs covenant | Background | Text |
 |-----------------|------------|------|
@@ -463,6 +565,11 @@ Same palette as the hero chart heatmap background:
 | minDscr ≤ DSCR < minDscr + 0.25 | `--cov-amber` | `--cov-amber-text` |
 | minDscr + 0.25 ≤ DSCR < minDscr + 0.75 | `--cov-light-green` | `--cov-light-green-text` |
 | DSCR ≥ minDscr + 0.75 | `--cov-deep-green` | `--cov-deep-green-text` |
+
+The hero chart heatmap uses a **continuous 5-stop gradient** instead (see §2.3
+Plotly implementation). The continuous approach works better for large background
+areas where subtle shade differences are visible; the discrete buckets work better
+for small table cells where color must be immediately interpretable.
 
 #### Table behaviour
 

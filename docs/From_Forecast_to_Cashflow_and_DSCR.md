@@ -415,6 +415,306 @@ GEN 1 DSCR SHAPE — WHY IT IMPROVES
 
 ---
 
+### 5.3a Quarterly CFADS and LTM DSCR — Full Worked Example
+
+Gen 1 tests DSCR annually (§5.3), but the dashboard also shows a **quarterly view** with **LTM (Last Twelve Months) DSCR**. This section explains why quarterly matters, walks through every step of the calculation with consistent numbers, proves why a common shortcut is statistically wrong, and maps the result to what the dashboard displays.
+
+#### Running example parameters
+
+All numbers below use this single project:
+
+| Parameter | Value |
+|-----------|-------|
+| Asset | 100 MW DC solar, West Texas |
+| PPA price | $45/MWh (flat, no escalator) |
+| Capacity factor | ~25% (annual average) |
+| Annual generation P50 | ~219,000 MWh |
+| Annual revenue P50 | **$9.86M** |
+| Annual OpEx | **$2.00M** ($20/kW-yr, flat) |
+| Annual CFADS P50 | $9.86M − $2.00M = **$7.86M** |
+| Loan | $60M principal, 6.0% fixed, 18-year tenor, level payment |
+| Annual debt service (Y1) | **$5.50M** (constant in level payment) |
+| DSCR covenant minimum | **1.25x** |
+
+Revenue percentiles (annual, from 1,000 Monte Carlo paths):
+
+| Percentile | Annual Revenue | Annual CFADS | Annual DSCR (Y1) |
+|------------|---------------|-------------|-------------------|
+| P10 | $8.38M | $6.38M | 1.16x |
+| P25 | $9.12M | $7.12M | 1.29x |
+| P50 | $9.86M | $7.86M | 1.43x |
+| P75 | $10.61M | $8.61M | 1.57x |
+| P90 | $11.34M | $9.34M | 1.70x |
+
+At P10, DSCR = 1.16x — below the 1.25x covenant. At P25, DSCR = 1.29x — just above. This is a realistic tight-but-bankable deal.
+
+---
+
+#### Why quarterly matters — seasonality
+
+Solar revenue concentrates in summer. The annual view shows one flat $9.86M bar. The quarterly view reveals *when* cash is abundant and when it is scarce — crucial for understanding whether the project can meet scheduled payments, fund reserves in the right quarter, and avoid short-term liquidity stress.
+
+---
+
+#### Step 1: Monthly simulation paths → quarterly revenue percentiles
+
+**1a. Raw monthly paths.** We have ~1,000 Monte Carlo paths, each with 12 monthly revenues. Here are 3 illustrative paths for context (all values in $K):
+
+| Month | Path 42 | Path 317 | Path 891 | Seasonal pattern |
+|-------|---------|----------|----------|-----------------|
+| Jan | $490 | $455 | $520 | Low (winter) |
+| Feb | $520 | $485 | $550 | Low |
+| Mar | $710 | $665 | $750 | Rising |
+| Apr | $950 | $890 | $1,000 | Rising |
+| May | $1,120 | $1,050 | $1,180 | High |
+| Jun | $1,200 | $1,125 | $1,265 | Peak |
+| Jul | $1,250 | $1,170 | $1,315 | Peak |
+| Aug | $1,180 | $1,105 | $1,240 | High |
+| Sep | $860 | $805 | $905 | Declining |
+| Oct | $680 | $635 | $715 | Declining |
+| Nov | $490 | $460 | $520 | Low |
+| Dec | $410 | $385 | $435 | Low (winter) |
+| **Annual** | **$9,860** | **$9,230** | **$10,395** | |
+
+Note: Path 317 is a lower-resource year (below P50); Path 891 is above P50. The seasonal shape is similar across all paths — summer is always the peak — but the absolute level varies.
+
+**1b. Aggregate to quarters within each path.** For each of the 1,000 paths, sum the 3 months in each quarter:
+
+| Quarter | Months | Path 42 | Path 317 | Path 891 |
+|---------|--------|---------|----------|----------|
+| Q1 | Jan + Feb + Mar | $1,720K | $1,605K | $1,820K |
+| Q2 | Apr + May + Jun | $3,270K | $3,065K | $3,445K |
+| Q3 | Jul + Aug + Sep | $3,290K | $3,080K | $3,460K |
+| Q4 | Oct + Nov + Dec | $1,580K | $1,480K | $1,670K |
+| **Annual** | | **$9,860K** | **$9,230K** | **$10,395K** |
+
+**1c. Compute percentiles per quarter across all 1,000 paths.** Sort the 1,000 Q1 values, find the 10th percentile, 25th, etc. Repeat for Q2, Q3, Q4:
+
+| Quarter | P10 | P25 | P50 | P75 | P90 |
+|---------|-----|-----|-----|-----|-----|
+| Q1 | $1,460K | $1,590K | $1,720K | $1,855K | $1,980K |
+| Q2 | $2,780K | $3,020K | $3,270K | $3,525K | $3,770K |
+| Q3 | $2,795K | $3,040K | $3,290K | $3,545K | $3,790K |
+| Q4 | $1,345K | $1,460K | $1,580K | $1,705K | $1,820K |
+| **Sum of quarterly P-values** | **$8,380K** | **$9,110K** | **$9,860K** | **$10,630K** | **$11,360K** |
+
+Notice: the sum of quarterly P50s ($9,860K) matches the annual P50 ($9.86M). This is expected because P50 (median) of symmetric distributions is approximately additive. But as we will show in Step 6, this does **not** hold for tail percentiles (P10, P90).
+
+**Implementation:** `computeQuarterlyPercentiles()` in `lib/stats.ts` does steps 1b and 1c.
+
+---
+
+#### Step 2: Quarterly CFADS (all 5 percentiles)
+
+CFADS = Revenue − OpEx. Annual OpEx is split evenly:
+
+```
+Quarterly OpEx  = $2.00M / 4 = $500K
+Quarterly CFADS = Quarterly Revenue − $500K
+```
+
+Full quarterly CFADS table:
+
+| Quarter | Rev P10 | Rev P50 | Rev P90 | OpEx | CFADS P10 | CFADS P25 | CFADS P50 | CFADS P75 | CFADS P90 |
+|---------|---------|---------|---------|------|-----------|-----------|-----------|-----------|-----------|
+| Q1 | $1,460K | $1,720K | $1,980K | $500K | **$960K** | **$1,090K** | **$1,220K** | **$1,355K** | **$1,480K** |
+| Q2 | $2,780K | $3,270K | $3,770K | $500K | **$2,280K** | **$2,520K** | **$2,770K** | **$3,025K** | **$3,270K** |
+| Q3 | $2,795K | $3,290K | $3,790K | $500K | **$2,295K** | **$2,540K** | **$2,790K** | **$3,045K** | **$3,290K** |
+| Q4 | $1,345K | $1,580K | $1,820K | $500K | **$845K** | **$960K** | **$1,080K** | **$1,205K** | **$1,320K** |
+
+**What the hero chart plots:** 72 points (4 quarters × 18 years). For each quarter, the P50 line shows the median CFADS, with the P10–P90 shaded band showing the uncertainty range. The seasonal curve — Q3 peak, Q1/Q4 trough — is immediately visible.
+
+**Key visual insight:** Even at P10 (worst case), Q2 and Q3 CFADS ($2.28M, $2.30M) are well above quarterly debt service ($1.375M). But Q1 and Q4 at P10 ($0.96M, $0.85M) are below quarterly DS. This is the **seasonality risk** — within-year cash timing doesn't match debt timing.
+
+---
+
+#### Step 3: Why naive quarterly DSCR is misleading
+
+Annual DS = $5.50M, so quarterly DS = $5.50M / 4 = **$1,375K**. If you naively compute DSCR per quarter:
+
+| Quarter | CFADS P10 | CFADS P50 | CFADS P90 | DS (qtr) | DSCR P10 | DSCR P50 | DSCR P90 |
+|---------|-----------|-----------|-----------|----------|----------|----------|----------|
+| Q1 | $960K | $1,220K | $1,480K | $1,375K | **0.70x** | **0.89x** | **1.08x** |
+| Q2 | $2,280K | $2,770K | $3,270K | $1,375K | **1.66x** | **2.01x** | **2.38x** |
+| Q3 | $2,295K | $2,790K | $3,290K | $1,375K | **1.67x** | **2.03x** | **2.39x** |
+| Q4 | $845K | $1,080K | $1,320K | $1,375K | **0.61x** | **0.79x** | **0.96x** |
+
+**The problem is stark:**
+- Q1 at P50: DSCR = 0.89x → would trigger covenant breach even though the project is healthy
+- Q4 at P90: DSCR = 0.96x → even the *best weather scenario* shows breach in winter
+- Q2 at P10: DSCR = 1.66x → the *worst weather scenario* in summer looks excellent
+
+This is entirely an artifact of **seasonal revenue timing vs. evenly-spaced debt payments**. The project earns enough over the full year — it just doesn't earn evenly. Using quarterly DSCR directly would make every solar project in the northern hemisphere look unbankable in Q4, which is absurd.
+
+---
+
+#### Step 4: LTM DSCR — the industry-standard fix
+
+**LTM = Last Twelve Months.** Real-world project finance tests covenants on a **trailing 12-month** basis, not per quarter. The bank cares whether the project covered its annual debt obligation over any rolling 12-month window — not whether January's cash covered January's payment.
+
+**Formula:**
+
+```
+LTM DSCR (tested at quarter Q of year Y)
+  = (sum of CFADS over trailing 4 quarters) / (sum of DS over trailing 4 quarters)
+  = Annual CFADS / Annual DS
+```
+
+**Worked example at P50 — tested at each quarter of Year 1:**
+
+```
+Tested at Q1-Y1:
+  Trailing 4Q CFADS  = Q2-Y0 + Q3-Y0 + Q4-Y0 + Q1-Y1
+                     = (no prior year in Gen 1 → use Q1+Q2+Q3+Q4 of current year)
+                     = $1,220K + $2,770K + $2,790K + $1,080K = $7,860K
+  Trailing 4Q DS     = $1,375K × 4 = $5,500K
+  LTM DSCR           = $7,860K / $5,500K = 1.43x  ✓
+
+Tested at Q2-Y1:
+  Same trailing 4Q (Gen 1: same year) → 1.43x  ✓
+
+Tested at Q3-Y1:
+  Same → 1.43x  ✓
+
+Tested at Q4-Y1:
+  Same → 1.43x  ✓
+```
+
+**All 4 quarters show the same 1.43x** because in Gen 1, the trailing 12 months always lands on the same annual period. Compare this to the naive quarterly approach: Q1 showed 0.89x (breach) and Q4 showed 0.79x (breach). LTM correctly shows 1.43x (comfortable pass) for all quarters.
+
+**Full LTM DSCR by percentile — Year 1:**
+
+| Percentile | Annual CFADS | Annual DS | LTM DSCR | Covenant (1.25x) |
+|------------|-------------|-----------|----------|------------------|
+| P10 | $6,380K | $5,500K | **1.16x** | BREACH |
+| P25 | $7,120K | $5,500K | **1.29x** | Pass |
+| P50 | $7,860K | $5,500K | **1.43x** | Pass |
+| P75 | $8,610K | $5,500K | **1.57x** | Pass |
+| P90 | $9,340K | $5,500K | **1.70x** | Pass |
+
+P10 breaches (1.16x < 1.25x), P25 through P90 pass. This matches the annual DSCR from §5.3 — as it should, because LTM over a full year equals the annual figure.
+
+---
+
+#### Step 5: Why LTM DSCR varies across years
+
+Revenue and OpEx are constant in Gen 1 (assumption A1), so annual CFADS is the same every year. But **debt service declines** as principal amortizes (level payment: interest portion shrinks as balance decreases). LTM DSCR improves purely from this mechanical effect:
+
+**Full multi-year LTM DSCR table (all 5 percentiles):**
+
+| Year | Annual DS | LTM DSCR P10 | P25 | P50 | P75 | P90 | P10 Status |
+|------|-----------|-------------|-----|-----|-----|-----|-----------|
+| Y1 | $5.50M | **1.16x** | 1.29x | 1.43x | 1.57x | 1.70x | BREACH |
+| Y2 | $5.38M | **1.19x** | 1.32x | 1.46x | 1.60x | 1.74x | BREACH |
+| Y3 | $5.25M | **1.22x** | 1.36x | 1.50x | 1.64x | 1.78x | BREACH |
+| Y4 | $5.12M | **1.25x** | 1.39x | 1.53x | 1.68x | 1.82x | PASS (exactly at threshold) |
+| Y5 | $4.98M | **1.28x** | 1.43x | 1.58x | 1.73x | 1.88x | Pass |
+| Y6 | $4.83M | **1.32x** | 1.47x | 1.63x | 1.78x | 1.93x | Pass |
+| Y8 | $4.52M | **1.41x** | 1.58x | 1.74x | 1.90x | 2.07x | Pass |
+| Y10 | $4.17M | **1.53x** | 1.71x | 1.89x | 2.07x | 2.24x | Pass |
+| Y12 | $3.78M | **1.69x** | 1.88x | 2.08x | 2.28x | 2.47x | Pass |
+| Y15 | $3.15M | **2.03x** | 2.26x | 2.49x | 2.73x | 2.96x | Pass |
+| Y18 | $2.38M | **2.68x** | 2.99x | 3.30x | 3.62x | 3.93x | Pass |
+
+**Reading this table:**
+- **Horizontally (across percentiles):** The spread P10→P90 in any given year shows weather uncertainty. In Y1, the range is 1.16x–1.70x — a 0.54x spread. This spread is constant (in ratio terms) because CFADS percentiles are constant and only the denominator changes.
+- **Vertically (across years):** Every percentile improves over time because DS declines. P10 crosses the 1.25x covenant threshold between Y3 and Y4. After Y4, the project passes even at P10.
+- **The binding constraint** is Y1 at P10 (1.16x). This is always the case in Gen 1 — CFADS flat, DS declining.
+
+**What the hero chart heatmap shows:** Each year has 4 quarterly columns (all identical in Gen 1). Each column has 5 vertical bands colored by the LTM DSCR at that percentile:
+- Bottom band (P10): red in Y1–Y3 (breach), amber in Y4, green from Y5+
+- Middle band (P50): green from Y1 onward (1.43x passes comfortably)
+- Top band (P90): deep green throughout (1.70x+ is very safe)
+
+The visual effect: early years show a vertical gradient (red at bottom, green at top — high uncertainty, P10 at risk). Later years are uniformly green (even P10 is safe). This two-dimensional gradient — horizontal (time) and vertical (percentile risk) — is the core insight of the hero chart.
+
+---
+
+#### Step 6: The percentile addition trap — with proof
+
+**Critical statistical note:** You cannot compute LTM CFADS by summing quarterly percentile values.
+
+**The wrong formula:**
+```
+LTM CFADS at P10 ≟ P10(Q1) + P10(Q2) + P10(Q3) + P10(Q4)
+                  = $960K + $2,280K + $2,295K + $845K
+                  = $6,380K
+```
+
+**In this example, the sum happens to match** the annual P10 ($6,380K) because our running example has near-perfect correlation across quarters (all paths scale up/down together). This is a coincidence of the example, not a general rule.
+
+**Why it fails in general — a concrete counterexample:**
+
+Consider 5 simulation paths with quarterly CFADS (simplified):
+
+| Path | Q1 | Q2 | Q3 | Q4 | Annual |
+|------|-----|-----|-----|-----|--------|
+| A | $800 | $2,500 | $2,600 | $700 | **$6,600** |
+| B | $1,100 | $2,000 | $2,800 | $900 | **$6,800** |
+| C | $1,000 | $2,400 | $2,200 | $1,100 | **$6,700** |
+| D | $900 | $2,700 | $2,100 | $1,000 | **$6,700** |
+| E | $1,200 | $2,100 | $2,500 | $800 | **$6,600** |
+
+**Per-quarter P10 (lowest value in each column):**
+
+| | Q1 | Q2 | Q3 | Q4 | Sum |
+|--|-----|-----|-----|-----|------|
+| P10 | $800 (Path A) | $2,000 (Path B) | $2,100 (Path D) | $700 (Path A) | **$5,600** |
+
+**Annual P10 (lowest annual total):**
+
+Sorted annual: $6,600 (A), $6,600 (E), $6,700 (C), $6,700 (D), $6,800 (B) → P10 = **$6,600**
+
+**The discrepancy:** Sum of quarterly P10s = $5,600 vs. actual annual P10 = $6,600. That's a **$1,000 difference** (15% lower). The sum method combines the worst Q1 (Path A), worst Q2 (Path B), worst Q3 (Path D), and worst Q4 (Path A) — but these come from **different paths**. No single path actually experienced $5,600. The sum method creates an imaginary worst-case that is unrealistically pessimistic.
+
+**Why this happens:** The path with the worst Q1 (Path A: low winter) compensates with decent Q2/Q3. The path with the worst Q2 (Path B: low spring) compensates with the best Q3. Seasonal variability washes out at the annual level. Summing per-quarter worst cases ignores this natural diversification and overstates risk.
+
+**The larger the seasonal variation and the lower the inter-quarter correlation, the bigger this gap.** For solar (extreme seasonality), it can be 10–20%. For wind (more evenly distributed), it's smaller but still meaningful.
+
+**The correct formula (what our implementation uses):**
+
+```
+1. For each path:  annual_CFADS = sum(Q1 + Q2 + Q3 + Q4)
+2. Across all paths: P10(annual_CFADS) = 10th percentile of the annual totals
+3. LTM DSCR(P10, Year t) = P10(annual_CFADS) / annual_DS(t)
+```
+
+The quarterly chart shows per-quarter CFADS for seasonal insight; the LTM DSCR uses the proper annual percentiles for the covenant test. Two different computations serving two different purposes.
+
+**Implementation:** `computeQuarterlyData()` in `lib/finance.ts` takes `annualCfadsPcts` (correctly computed annual percentiles from `computeFinancials`) and uses them directly for LTM DSCR — never summing quarterly percentiles.
+
+---
+
+#### Step 7: What the dashboard shows — mapping computation to UI
+
+| Dashboard element | Computation | Section |
+|-------------------|-------------|---------|
+| Hero chart — CFADS P50 line (blue) | 72 points: `quarterlyRevPcts[q].P50 − quarterlyOpex` for each quarter | Step 2 |
+| Hero chart — CFADS P10–P90 band (shaded) | Same as above for P10, P25, P75, P90 | Step 2 |
+| Hero chart — Debt Service line (gold) | `annualDS / 4` repeated per quarter, stepping down each year | Step 3 |
+| Hero chart — Background heatmap (vertical gradient) | 5 bands per column, each colored by `riskColor(ltmDscr[Pxx])` | Step 5 |
+| Hero chart — Hover tooltip | Per-percentile LTM DSCR with ✓/✗ vs covenant | Step 4 |
+| Ledger table — Min DSCR column | P10 of annual DSCR = `annualCfadsPcts.P10 / annualDS` | Step 5 |
+| Ledger table — Expanded DSCR row | All 5 percentiles of annual DSCR | Step 5 |
+| KPI card — Min DSCR | Minimum of `annualCfadsPcts.P10 / annualDS` across all years (always Y1 in Gen 1) | Step 5 |
+
+---
+
+#### Gen 1 vs Gen 2 behavior
+
+| Aspect | Gen 1 (current) | Gen 2 (future) |
+|--------|-----------------|----------------|
+| Quarterly revenue pattern | Same 4-quarter shape every year (seasonal pattern from 12-month forecast repeated) | Varies by year — degradation reduces summer peaks, PPA escalator increases revenue, OpEx inflation increases quarterly deductions |
+| LTM DSCR within a year | Same for all 4 quarters (trailing 12m = full year of constant revenue) | Can differ — Q3-Y5 trailing window spans Q4-Y4 through Q3-Y5, mixing two years with different generation levels |
+| What drives year-to-year LTM variation | Only debt service amortization (CFADS flat, DS declining) | DS amortization + degradation + escalation + OpEx inflation — CFADS itself changes year to year |
+| Seasonal insight | Shows the fixed seasonal shape (Q3 peak, Q1/Q4 trough) — useful for understanding cash timing risk | Shows how seasonality evolves (e.g., degradation flattening summer peaks over 18 years) |
+| Percentile addition trap | Not a practical issue because quarterly percentiles are only used for the chart display, not for LTM calculation | Becomes more complex: true rolling LTM requires summing across year boundaries with different annual CFADS levels |
+| Heatmap gradient | All 4 quarters per year are identical (same year → same LTM DSCR) — year-level coloring | Per-quarter variation visible — Q4-Y5 and Q1-Y6 may show different colors because their trailing windows include different proportions of Y5 vs Y6 revenue |
+
+**Gen 2 readiness:** The framework is built to handle Gen 2 seamlessly. `computeQuarterlyPercentiles()` will receive per-year monthly data (with degradation and escalation baked in). `computeQuarterlyData()` will compute true trailing 12-month sums that cross year boundaries, producing 72 potentially unique LTM DSCR values instead of 18 repeated ones.
+
+---
+
 ### 5.4 Gen 1 Assumptions — Explicit List
 
 These assumptions are **large and deliberate.** They must be documented clearly because the shift from Gen 1 to Gen 2 is primarily about relaxing them.
@@ -428,7 +728,7 @@ These assumptions are **large and deliberate.** They must be documented clearly 
 | **A5** | **Years are independent** | Each year's percentile is a fixed case, not a draw; no consecutive-year dynamics | Cannot show breach probability, only "which case breaches" | ⭐⭐⭐ |
 | **A6** | **Stationarity** | Weather and price distributions don't change over 18 years | Ignores climate trends and market structural shifts | ⭐⭐⭐ |
 | **A7** | **No reserve mechanics** | No DSRA drawdown/top-up, simplified waterfall (CFADS = Rev − OpEx) | 📈 Overestimates available cash (reserves reduce it) | ⭐⭐ |
-| **A8** | **Annual covenant testing** | DSCR tested annually, not quarterly/semi-annually | Misses within-year seasonality (H2 could breach even if annual passes) | ⭐⭐ |
+| **A8** | **~~Annual covenant testing~~** *(partially relaxed)* | Dashboard now shows quarterly CFADS with LTM DSCR (see §5.3a). Covenant test still uses annual percentiles for statistical accuracy; quarterly view provides seasonal insight. Full relaxation in Gen 2 with true rolling LTM across year boundaries. | ⭐ (was ⭐⭐) |
 
 **Net effect of A2 + A3 + A4 on late-year DSCR accuracy:**
 
@@ -459,7 +759,7 @@ These assumptions are **large and deliberate.** They must be documented clearly 
 | 4 | 5 fixed percentile cases | **Monte Carlo** (1,000+ paths drawing from distribution each year) | Enables **breach probability** per year, not just "which case breaches" | Medium |
 | 5 | i.i.d. implicit | **Regime-aware sampling** (HMM) | 📉 Increases consecutive bad year probability | High |
 | 6 | No reserves | **DSRA/MRA** in waterfall | 📉 Reduces CFADS; but provides buffer | Medium |
-| 7 | Annual DSCR | **Quarterly or semi-annual** DSCR matching real covenant test frequency | More realistic — catches seasonal weakness | Low |
+| 7 | Annual DSCR | **Quarterly or semi-annual** DSCR matching real covenant test frequency | More realistic — catches seasonal weakness | Low | ✅ *Partially done:* quarterly CFADS + LTM DSCR implemented in Gen 1 dashboard (§5.3a). Gen 2 adds true rolling LTM across year boundaries. |
 
 **The single biggest shift** is #4: going from "5 deterministic percentile lines" to "1,000+ simulated paths." This unlocks the output lenders actually want — not "P90 DSCR is 1.25x in Year 3" but "**there's a 4.2% chance of breaching 1.25x in any given year**."
 

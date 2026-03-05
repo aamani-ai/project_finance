@@ -6,8 +6,8 @@ import type {
   ComputedFinancials,
 } from "@/types";
 import { fetchSiteData, fetchSites } from "@/lib/api";
-import { computeFinancials } from "@/lib/finance";
-import { computeMonthlyStats, computeQuarterlyPercentiles } from "@/lib/stats";
+import { computeMonthlyStats, computeQuarterlyPercentiles, computeMonthlyPercentiles } from "@/lib/stats";
+import { computeFinancials, computeMonthlyViewData } from "@/lib/finance";
 import { validateLoanConfig, validateCrossControls, hasHardError } from "@/lib/validation";
 
 import { Header } from "@/components/Header";
@@ -200,6 +200,12 @@ export default function DashboardPage() {
     [siteData?.monthly_paths]
   );
 
+  // ── Monthly percentiles (per calendar month, for 12M forward view) ────────────
+  const monthlyRevPcts = useMemo(
+    () => computeMonthlyPercentiles(siteData?.monthly_paths ?? []),
+    [siteData?.monthly_paths]
+  );
+
   // ── Main computation ──────────────────────────────────────────────────────────
   const computed: ComputedFinancials | null = useMemo(() => {
     if (!asset || simulatedRevenue.length === 0 || isBlocked) return null;
@@ -229,6 +235,20 @@ export default function DashboardPage() {
     () => computeMonthlyStats(siteData?.monthly_paths ?? []),
     [siteData?.monthly_paths]
   );
+
+  // ── Forward 12-month view data ─────────────────────────────────────────────────
+  const forecastStartMonth = siteData?.forecast_start_month ?? 1;
+  const monthlyViewData = useMemo(() => {
+    if (!computed || !monthlyRevPcts) return null;
+    const annualDS = computed.loanSchedule[0]?.debtService ?? 0;
+    return computeMonthlyViewData(
+      monthlyRevPcts,
+      computed.annualOpex,
+      annualDS,
+      computed.minDscr,
+      forecastStartMonth
+    );
+  }, [computed, monthlyRevPcts, forecastStartMonth]);
 
   const pathCount = simulatedRevenue.length;
 
@@ -338,6 +358,8 @@ uvicorn main:app --port 8001 --reload`}
                     annualOpex={computed.annualOpex}
                     minDscr={computed.minDscr}
                     quarterlyData={computed.quarterlyData}
+                    monthlyViewData={monthlyViewData}
+                    forecastStartMonth={forecastStartMonth}
                   />
                 ) : (
                   <Skeleton className="h-[380px]" />

@@ -7,6 +7,8 @@ import type {
   PercentileKey,
   AssetMeta,
   QuarterlyPoint,
+  MonthlyViewPoint,
+  ForwardQuarterBlock,
 } from "@/types";
 import { computePercentiles } from "@/lib/stats";
 
@@ -206,6 +208,95 @@ export function computeQuarterlyData(
 }
 
 // ── Full computation ──────────────────────────────────────────────────────────
+
+// Month name lookup
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Build the 12-point forward-looking monthly view.
+ *
+ * monthlyRevPcts: 12-element array (index 0 = January ... index 11 = December)
+ * annualOpex:     annual operating expense ($)
+ * annualDS:       annual debt service for Year 1 ($)
+ * minDscr:        covenant minimum
+ * startMonth:     1-12, calendar month when the forecast window begins (e.g. 2 = Feb)
+ *
+ * The x-axis starts at startMonth and wraps around the year.
+ * Example: startMonth=2 → x-axis = [Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan]
+ *
+ * Returns { monthlyPoints, quarterBlocks }:
+ *   monthlyPoints: 12 MonthlyViewPoint objects in forecast order
+ *   quarterBlocks: 4 ForwardQuarterBlock objects, each covering 3 consecutive months
+ *                  in the forecast window, colored by quarterly DSCR (not LTM)
+ */
+export function computeMonthlyViewData(
+  monthlyRevPcts: PercentileMap[],  // length 12, index 0 = Jan
+  annualOpex: number,
+  annualDS: number,
+  minDscr: number,
+  startMonth: number                // 1-12
+): { monthlyPoints: MonthlyViewPoint[]; quarterBlocks: ForwardQuarterBlock[] } {
+  const keys: PercentileKey[] = ["P10", "P25", "P50", "P75", "P90"];
+  const monthlyOpex = annualOpex / 12;
+  const monthlyDS = annualDS / 12;
+
+  // Build 12-point series starting from startMonth, wrapping around year
+  const monthlyPoints: MonthlyViewPoint[] = [];
+  for (let i = 0; i < 12; i++) {
+    const calMonth = ((startMonth - 1 + i) % 12) + 1;  // 1-12
+    const revPcts = monthlyRevPcts[calMonth - 1];       // index 0 = Jan
+    const cfads: PercentileMap = {} as PercentileMap;
+    for (const k of keys) {
+      cfads[k] = revPcts[k] - monthlyOpex;
+    }
+    monthlyPoints.push({
+      monthIndex: i,
+      calMonth,
+      monthName: MONTH_NAMES[calMonth - 1],
+      revenue: revPcts,
+      cfads,
+      debtService: monthlyDS,
+    });
+  }
+
+  // Build 4 quarter blocks (3 months each) — DSCR = quarterly CFADS / quarterly DS
+  // Quarters are based on forecast position, not calendar: Q1=pos 0-2, Q2=3-5, Q3=6-8, Q4=9-11
+  const quarterlyDS = annualDS / 4;
+  const quarterBlocks: ForwardQuarterBlock[] = [];
+
+  for (let q = 0; q < 4; q++) {
+    const startPos = q * 3;
+    const endPos = startPos + 2;
+
+    // Sum the 3 months' CFADS per percentile
+    const qCfads: PercentileMap = {} as PercentileMap;
+    for (const k of keys) {
+      qCfads[k] = monthlyPoints[startPos].cfads[k]
+                + monthlyPoints[startPos + 1].cfads[k]
+                + monthlyPoints[startPos + 2].cfads[k];
+    }
+
+    // Quarterly DSCR = quarterly CFADS / quarterly DS
+    const dscr: PercentileMap = {} as PercentileMap;
+    for (const k of keys) {
+      dscr[k] = quarterlyDS > 0 ? qCfads[k] / quarterlyDS : 0;
+    }
+
+    // Build a human-readable label e.g. "Q1 (Feb–Apr)"
+    const m1 = monthlyPoints[startPos].monthName;
+    const m3 = monthlyPoints[endPos].monthName;
+    const label = `Q${q + 1} (${m1}–${m3})`;
+
+    quarterBlocks.push({ quarterIndex: q, label, startPos, endPos, dscr });
+  }
+
+  void minDscr; // available for caller; not used in computation directly
+
+  return { monthlyPoints, quarterBlocks };
+}
 
 export function computeFinancials(
   revenueValues: number[], // simulated paths only

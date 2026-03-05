@@ -103,12 +103,13 @@ def load_revenue_data(
     site_slug: str,
     kind: str = "hub",
     market: str = "da",
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], int]:
     """
-    Download revenue.duckdb for a site, return (annual_paths, monthly_paths).
+    Download revenue.duckdb for a site, return (annual_paths, monthly_paths, forecast_start_month).
 
     annual_paths: list of rows from the `annual` table
     monthly_paths: list of rows from the `monthly` table (empty if no such table)
+    forecast_start_month: 1-12, calendar month of the first month in the forecast window
     """
     gcs_path = f"aggregated_data/{site_slug}/revenue.duckdb"
     client = _gcs_client()
@@ -146,6 +147,7 @@ def load_revenue_data(
         #   path_id, segment, year_month (string "YYYY-MM"),
         #   monthly_revenue_usd, kind, market, eligible_for_rev_dist
         monthly_df = pd.DataFrame()
+        forecast_start_month = 1  # default; overwritten when monthly data exists
         try:
             tables = con.execute(
                 "SELECT table_name FROM information_schema.tables "
@@ -173,13 +175,21 @@ def load_revenue_data(
                 if not monthly_df.empty:
                     # Extract calendar month (1-12) from year_month "YYYY-MM"
                     monthly_df["month"] = monthly_df["year_month"].str.split("-").str[1].astype(int)
+                    # Derive forecast start month from the earliest year_month
+                    # e.g. min("2026-02") → month 2 (February)
+                    min_ym = monthly_df["year_month"].min()  # "YYYY-MM"
+                    forecast_start_month = int(min_ym.split("-")[1])
                     # Keep only the columns the frontend expects
                     monthly_df = monthly_df[["path_id", "segment", "month", "monthly_revenue_usd"]]
 
-                print(f"  [data_loader] Monthly rows: {len(monthly_df)} "
-                      f"({monthly_df['path_id'].nunique() if not monthly_df.empty else 0} paths)")
+                    print(f"  [data_loader] Monthly rows: {len(monthly_df)} "
+                          f"({monthly_df['path_id'].nunique()} paths), "
+                          f"forecast_start_month={forecast_start_month}")
+                else:
+                    forecast_start_month = 1  # default January when no monthly data
         except Exception as e:
             print(f"  [data_loader] Monthly load error: {e}")
+            forecast_start_month = 1  # safe default
 
         con.close()
 
@@ -196,7 +206,7 @@ def load_revenue_data(
                 if hasattr(v, "item"):
                     row[k] = v.item()
 
-        return annual_records, monthly_records
+        return annual_records, monthly_records, forecast_start_month
 
     finally:
         os.unlink(tmp_path)

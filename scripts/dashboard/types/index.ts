@@ -30,6 +30,7 @@ export interface SiteData {
   available_sites: { asset_slug: string; asset_type: string; state: string }[];
   kind: string;
   market: string;
+  forecast_start_month: number; // 1-12, calendar month the 12-month window begins
 }
 
 // ── Loan Configuration ───────────────────────────────────────────────────────
@@ -134,4 +135,24 @@ export interface QuarterlyPoint {
   cfads: PercentileMap;     // quarterly CFADS percentiles ($ = revenue - opex/4)
   debtService: number;      // quarterly DS (annual DS / 4)
   ltmDscr: PercentileMap;   // LTM DSCR at this test date (trailing 12-month)
+}
+
+// ── Monthly forward-looking view (12-month, computed client-side) ─────────────
+
+export interface MonthlyViewPoint {
+  monthIndex: number;       // 0-11 (position in the 12-month forward window)
+  calMonth: number;         // 1-12 (calendar month: 1=Jan, ..., 12=Dec)
+  monthName: string;        // "Jan", "Feb", etc.
+  revenue: PercentileMap;   // monthly revenue percentiles ($)
+  cfads: PercentileMap;     // monthly CFADS percentiles (revenue - opex/12)
+  debtService: number;      // monthly DS (annual DS Y1 / 12)
+}
+
+// One block per calendar quarter within the 12-month window
+export interface ForwardQuarterBlock {
+  quarterIndex: number;     // 0-3
+  label: string;            // e.g. "Q1 (Feb–Apr)"
+  startPos: number;         // x-axis start position (0-11)
+  endPos: number;           // x-axis end position (2-11)
+  dscr: PercentileMap;      // quarterly DSCR at each percentile
 }

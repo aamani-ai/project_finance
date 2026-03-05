@@ -119,6 +119,36 @@ export function computeMonthlyStats(
 }
 
 /**
+ * Compute revenue percentiles per calendar month from monthly paths.
+ *
+ * Returns an array of 12 PercentileMaps indexed 0-11 (index 0 = month 1 = January).
+ * This preserves calendar month identity so the caller can reorder by startMonth.
+ */
+export function computeMonthlyPercentiles(
+  monthlyPaths: MonthlyRevenuePath[]
+): PercentileMap[] | null {
+  if (monthlyPaths.length === 0) return null;
+
+  // Collect values per calendar month
+  const byMonth: Record<number, number[]> = {};
+  for (let m = 1; m <= 12; m++) byMonth[m] = [];
+
+  for (const row of monthlyPaths) {
+    if (row.month >= 1 && row.month <= 12) {
+      byMonth[row.month].push(row.monthly_revenue_usd);
+    }
+  }
+
+  // Verify all 12 months have data
+  for (let m = 1; m <= 12; m++) {
+    if (byMonth[m].length === 0) return null;
+  }
+
+  // Return array indexed 0-11 where index 0 = January (month 1)
+  return Array.from({ length: 12 }, (_, i) => computePercentiles(byMonth[i + 1]));
+}
+
+/**
  * Compute quarterly revenue percentiles from monthly paths.
  *
  * The monthly data contains one year of 12 months across N simulated paths.

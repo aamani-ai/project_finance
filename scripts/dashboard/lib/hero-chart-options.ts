@@ -41,7 +41,7 @@ function axisIdx(params: unknown): number {
 }
 
 function baseGrid() {
-  return { top: 16, bottom: 50, left: 58, right: 20 };
+  return { top: 16, bottom: 50, left: 58, right: 36 };
 }
 
 function baseYAxis(palette: ChartPalette) {
@@ -58,6 +58,22 @@ function baseYAxis(palette: ChartPalette) {
     },
     axisLine: { lineStyle: { color: palette.gridColor } },
     splitLine: { lineStyle: { color: palette.gridColor } },
+  };
+}
+
+function bandLabelYAxis(palette: ChartPalette) {
+  return {
+    type: "category" as const,
+    data: ["P10", "P25", "P50", "P75", "P90"],
+    position: "right" as const,
+    axisLine: { show: false },
+    axisTick: { show: false },
+    splitLine: { show: false },
+    axisLabel: {
+      color: palette.axisColor,
+      fontSize: 9,
+      fontFamily: FONT_FAMILY,
+    },
   };
 }
 
@@ -95,11 +111,6 @@ function baseTooltip(palette: ChartPalette) {
 // bandY0/Y1 are fractions of the grid height (0 = bottom, 1 = top)
 
 function makeHeatmapRenderItem(minDscr: number, isDark: boolean, categoryCount: number) {
-  // Edge bleed: extend first/last cells a few px past the grid boundary so the
-  // heatmap covers any sub-pixel gap between coordSys and the visible chart edge.
-  // The heatmap renders at z=-1 (behind axis lines/labels), so the bleed is invisible.
-  const EDGE_BLEED = 6;
-
   return function renderItem(
     params: CustomSeriesRenderItemParams,
     api: CustomSeriesRenderItemAPI
@@ -110,13 +121,12 @@ function makeHeatmapRenderItem(minDscr: number, isDark: boolean, categoryCount: 
     const dscr = api.value(3) as number;
 
     const coordSys = params.coordSys as unknown as { x: number; y: number; width: number; height: number };
-    const cellWidth = coordSys.width / categoryCount;
-    let leftPx = coordSys.x + xIdx * cellWidth;
-    let rightPx = leftPx + cellWidth;
-
-    // Bleed edge cells past grid boundary
-    if (xIdx === 0) leftPx -= EDGE_BLEED;
-    if (xIdx === categoryCount - 1) rightPx += EDGE_BLEED;
+    // boundaryGap:false → categories sit at grid edges, spacing = width/(N-1)
+    const spacing = categoryCount > 1 ? coordSys.width / (categoryCount - 1) : coordSys.width;
+    const centerX = coordSys.x + xIdx * spacing;
+    const halfCell = spacing / 2;
+    const leftPx = Math.max(coordSys.x, centerX - halfCell);
+    const rightPx = Math.min(coordSys.x + coordSys.width, centerX + halfCell);
 
     const y0Px = coordSys.y + coordSys.height * (1 - bandY1);
     const y1Px = coordSys.y + coordSys.height * (1 - bandY0);
@@ -141,8 +151,6 @@ function makeHeatmapRenderItem(minDscr: number, isDark: boolean, categoryCount: 
 // Variant for monthly view where heatmap spans multiple x positions per block
 // Data format: [startPos, endPos, bandY0, bandY1, dscr] — raw month indices (0-based, inclusive)
 function makeMonthlyHeatmapRenderItem(minDscr: number, isDark: boolean, monthCount: number) {
-  const EDGE_BLEED = 6;
-
   return function renderItem(
     params: CustomSeriesRenderItemParams,
     api: CustomSeriesRenderItemAPI
@@ -154,13 +162,11 @@ function makeMonthlyHeatmapRenderItem(minDscr: number, isDark: boolean, monthCou
     const dscr = api.value(4) as number;
 
     const coordSys = params.coordSys as unknown as { x: number; y: number; width: number; height: number };
-    const cellWidth = coordSys.width / monthCount;
-    let leftPx = coordSys.x + startPos * cellWidth;
-    let rightPx = coordSys.x + (endPos + 1) * cellWidth;
-
-    // Bleed edge blocks past grid boundary
-    if (startPos === 0) leftPx -= EDGE_BLEED;
-    if (endPos === monthCount - 1) rightPx += EDGE_BLEED;
+    // boundaryGap:false → months sit at grid edges, spacing = width/(N-1)
+    const spacing = monthCount > 1 ? coordSys.width / (monthCount - 1) : coordSys.width;
+    const halfCell = spacing / 2;
+    const leftPx = Math.max(coordSys.x, coordSys.x + startPos * spacing - halfCell);
+    const rightPx = Math.min(coordSys.x + coordSys.width, coordSys.x + endPos * spacing + halfCell);
 
     const y0Px = coordSys.y + coordSys.height * (1 - bandY1);
     const y1Px = coordSys.y + coordSys.height * (1 - bandY0);
@@ -333,12 +339,13 @@ function buildQuarterlyOption(
   const smooth = 0.4;
 
   return {
-    backgroundColor: palette.plotBg,
+    backgroundColor: "transparent",
     animation: true,
     animationDuration: 300,
     grid: baseGrid(),
     xAxis: {
       type: "category",
+      boundaryGap: false,
       data: data.map((_, i) => i),
       axisLabel: {
         formatter: (_: string, idx: number) => xLabels[idx] || "",
@@ -354,7 +361,7 @@ function buildQuarterlyOption(
       nameGap: 30,
       nameTextStyle: { color: palette.axisColor, fontSize: 11, fontFamily: FONT_FAMILY },
     },
-    yAxis: baseYAxis(palette),
+    yAxis: [baseYAxis(palette), bandLabelYAxis(palette)],
     tooltip: {
       ...baseTooltip(palette),
       formatter: (params: unknown) => {
@@ -388,6 +395,7 @@ function buildQuarterlyOption(
         renderItem: makeHeatmapRenderItem(minDscr, isDark, data.length),
         data: heatmapData,
         silent: true,
+        clip: false,
         z: 0,
         encode: { x: 0 },
         tooltip: { show: false },
@@ -491,12 +499,13 @@ export function buildForward12MOption(
   const yMax = Math.ceil(Math.max(...cfadsP90, ...dsArr) * 11.5) / 10;
 
   return {
-    backgroundColor: palette.plotBg,
+    backgroundColor: "transparent",
     animation: true,
     animationDuration: 300,
     grid: baseGrid(),
     xAxis: {
       type: "category",
+      boundaryGap: false,
       data: monthlyPoints.map((_, i) => i),
       axisLabel: {
         formatter: (_: string, idx: number) => monthlyPoints[idx]?.monthName || "",
@@ -512,7 +521,7 @@ export function buildForward12MOption(
       nameGap: 30,
       nameTextStyle: { color: palette.axisColor, fontSize: 11, fontFamily: FONT_FAMILY },
     },
-    yAxis: { ...baseYAxis(palette), max: yMax },
+    yAxis: [{ ...baseYAxis(palette), max: yMax }, bandLabelYAxis(palette)],
     tooltip: {
       ...baseTooltip(palette),
       formatter: (params: unknown) => {
@@ -571,6 +580,7 @@ export function buildForward12MOption(
         renderItem: makeMonthlyHeatmapRenderItem(minDscr, isDark, monthlyPoints.length),
         data: heatmapData,
         silent: true,
+        clip: false,
         z: 0,
         encode: { x: 0 },
         tooltip: { show: false },
@@ -630,12 +640,13 @@ export function buildAnnualFallbackOption(
   );
 
   return {
-    backgroundColor: palette.plotBg,
+    backgroundColor: "transparent",
     animation: true,
     animationDuration: 300,
     grid: baseGrid(),
     xAxis: {
       type: "category",
+      boundaryGap: false,
       data: years.map((y) => `'${String(startYear + y - 1).slice(-2)}`),
       axisLabel: {
         interval: 1, // show every other year
@@ -651,7 +662,7 @@ export function buildAnnualFallbackOption(
       nameGap: 30,
       nameTextStyle: { color: palette.axisColor, fontSize: 11, fontFamily: FONT_FAMILY },
     },
-    yAxis: baseYAxis(palette),
+    yAxis: [baseYAxis(palette), bandLabelYAxis(palette)],
     tooltip: {
       ...baseTooltip(palette),
       formatter: (params: unknown) => {
@@ -679,6 +690,7 @@ export function buildAnnualFallbackOption(
         renderItem: makeHeatmapRenderItem(minDscr, isDark, years.length),
         data: heatmapData,
         silent: true,
+        clip: false,
         z: 0,
         encode: { x: 0 },
         tooltip: { show: false },
